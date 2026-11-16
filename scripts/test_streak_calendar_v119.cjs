@@ -1,6 +1,6 @@
 // Calendar/streak regression across midnight, year boundary and leap days.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),cp=require('node:child_process');
-const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const ts=require('typescript');
 const root=path.resolve(__dirname,'..');
 const source=ts.transpileModule(fs.readFileSync(path.join(root,'src/lib/progress.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
 const script=`const vm=require('node:vm'),assert=require('node:assert/strict');const source=${JSON.stringify(source)};const real=Date;class Clock extends real {constructor(...args){super(...(args.length?args:[process.env.TEST_NOW]));}static now(){return new real(process.env.TEST_NOW).valueOf();}}const mod={exports:{}};vm.runInNewContext('(function(require,module,exports){'+source+'\\n})',{Date:Clock,Map,Set,Number,JSON,Object,Array,String,RegExp,Error,Promise,console})(id=>id==='../data/questions'?{questions:[]}: {default:{getItem:async()=>null}},mod,mod.exports);const {todayKey,streak}=mod.exports;const days=JSON.parse(process.env.TEST_DAYS);assert.equal(todayKey(),process.env.TEST_TODAY);assert.equal(streak(days),Number(process.env.TEST_EXPECT));`;

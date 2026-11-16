@@ -96,14 +96,16 @@ export function validateBackupEnvelope(value:unknown):value is BackupEnvelope{
              typeof d.began!=='number'||!Number.isSafeInteger(d.began)||d.began<=0||
              !Array.isArray(d.responses)||!nonnegative(d.answered)||(d.answered as number)>d.ids.length||
              !nonnegative(d.correct)||(d.correct as number)>(d.answered as number)||d.answered!==d.responses.length)return false;
+          // d.ids was checked above for a non-empty, unique string array.
+          const ids=d.ids as string[];
           const responses=d.responses as unknown[];
           if(!responses.every(item=>{
             if(!item||typeof item!=='object'||Array.isArray(item))return false;
             const r=item as Record<string,unknown>;
-            return typeof r.id==='string'&&d.ids.includes(r.id)&&
+            return typeof r.id==='string'&&ids.includes(r.id)&&
               (r.selected===null||nonnegative(r.selected))&&typeof r.correct==='boolean'&&
               (r.writing===undefined||typeof r.writing==='string');
-          })||new Set(responses.map(item=>(item as Record<string,unknown>).id)).size!==responses.length||responses.filter(item=>(item as Record<string,unknown>).correct===true).length!==d.correct||responses.some(item=>{const r=item as Record<string,unknown>;const q=questions.find(q=>q.id===r.id);return !q||(q.kind==='choice'?(r.selected===null||(r.selected as number)>=q.options.length||r.correct!==(r.selected===q.answer)):r.selected!==null);})||responses.some((item,i)=>(item as Record<string,unknown>).id!==d.ids[i])||(d.index!==d.answered&&d.index!==(d.answered as number)-1))return false;
+          })||new Set(responses.map(item=>(item as Record<string,unknown>).id)).size!==responses.length||responses.filter(item=>(item as Record<string,unknown>).correct===true).length!==d.correct||responses.some(item=>{const r=item as Record<string,unknown>;const q=questions.find(q=>q.id===r.id);return !q||(q.kind==='choice'?(r.selected===null||(r.selected as number)>=q.options.length||r.correct!==(r.selected===q.answer)):r.selected!==null);})||responses.some((item,i)=>(item as Record<string,unknown>).id!==ids[i])||(d.index!==d.answered&&d.index!==(d.answered as number)-1))return false;
         }
       }catch{return false;}
     }

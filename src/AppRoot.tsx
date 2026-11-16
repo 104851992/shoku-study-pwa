@@ -62,6 +62,8 @@ export default function AppRoot() {
   const [selected,setSelected]=useState<number|null>(null);
   const [answerHandled,setAnswerHandled]=useState(false);
   const [showSample,setShowSample]=useState(false);
+  const [showExplanation,setShowExplanation]=useState(false);
+  const quizScrollRef=useRef<ScrollView>(null);
   const [writing,setWriting]=useState('');
   const [elapsed,setElapsed]=useState(0);
   const [saveError,setSaveError]=useState(false);
@@ -202,11 +204,13 @@ export default function AppRoot() {
     const x=savedSession;
     setSession(x);setSavedSession(null);setElapsed(Math.max(0,Math.floor((Date.now()-x.began)/1000)));
     const answer=x.responses.find(a=>a.id===x.ids[x.index]);
-    setSelected(answer?.selected??null);setWriting(answer?.writing??'');setAnswerHandled(Boolean(answer));setShowSample(Boolean(answer));
+    setSelected(answer?.selected??null);setWriting(answer?.writing??'');setAnswerHandled(Boolean(answer));setShowSample(Boolean(answer));setShowExplanation(false);
   }
   useEffect(()=>{if(!session)return;const t=setInterval(()=>setElapsed(Math.floor((Date.now()-session.began)/1000)),1000);return()=>clearInterval(t);},[session?.began]);
   const activeQuestion=useMemo(()=>session?questions.find(q=>q.id===session.ids[session.index]):undefined,[session?.ids,session?.index]);
   useEffect(()=>{fade.setValue(0);Animated.timing(fade,{toValue:1,duration:250,useNativeDriver:true}).start();},[activeQuestion?.id,tab,report]);
+  // Keep each new question at its beginning, even if the previous explanation was long.
+  useEffect(()=>{quizScrollRef.current?.scrollTo({y:0,animated:false});setShowExplanation(false);},[activeQuestion?.id]);
 
   const gradeQ=useMemo(()=>questions.filter(q=>q.grade===grade),[grade]);
   const catQ=useMemo(()=>gradeQ.filter(q=>category==='すべて'||q.category===category),[gradeQ,category]);
@@ -243,7 +247,7 @@ export default function AppRoot() {
     if(!list.length){notify('問題がありません','条件を変更してもう一度お試しください。');return;}
     setSavedSession(null);
     setSession({ids:list.map(q=>q.id),grade,mode,correct:0,answered:0,index:0,began:Date.now(),responses:[]});
-    setSelected(null);setWriting('');setShowSample(false);setAnswerHandled(false);setElapsed(0);setReport(null);setReviewResults(false);
+    setSelected(null);setWriting('');setShowSample(false);setShowExplanation(false);setAnswerHandled(false);setElapsed(0);setReport(null);setReviewResults(false);
   }
   function record(id:string,ok:boolean,chosen:number|null,answerText?:string) {
     const d=todayKey();
@@ -257,7 +261,7 @@ export default function AppRoot() {
   }
   function select(i:number) {
     if(!activeQuestion||activeQuestion.kind!=='choice'||answerHandled)return;
-    setSelected(i);setAnswerHandled(true);record(activeQuestion.id,i===activeQuestion.answer,i);
+    setSelected(i);setShowExplanation(false);setAnswerHandled(true);record(activeQuestion.id,i===activeQuestion.answer,i);
   }
   function selfReview(ok:boolean) {if(!activeQuestion||activeQuestion.kind!=='written'||answerHandled)return;setAnswerHandled(true);record(activeQuestion.id,ok,null,writing);}
   function next() {
@@ -273,7 +277,7 @@ export default function AppRoot() {
         history:[result,...p.history]}));
       setReport(result);setReviewResults(false);
       discardDraft();setElapsed(0);
-    }else {setSession({...session,index:session.index+1});setSelected(null);setShowSample(false);setWriting('');setAnswerHandled(false);}
+    }else {setSession({...session,index:session.index+1});setSelected(null);setShowSample(false);setShowExplanation(false);setWriting('');setAnswerHandled(false);}
   }
   function exit() {if(!session)return;confirmAction('学習を終了しますか？','回答済みの記録は保存されます。今回の学習時間は集計されません。','終了',discardDraft);}
   function toggleStar(id:string) {setProgress(p=>({...p,favorites:p.favorites.includes(id)?p.favorites.filter(x=>x!==id):[...p.favorites,id]}));}
@@ -295,7 +299,8 @@ export default function AppRoot() {
     return <SafeAreaView style={S.root}><StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
       <View style={S.quizTop}><Pressable onPress={exit} accessibilityLabel="学習終了"><Text style={S.x}>×</Text></Pressable><Text style={S.sub}>{session.index+1} / {n}</Text><Pressable onPress={()=>toggleStar(activeQuestion.id)}><Text style={S.star}>{isStar(activeQuestion.id)?'★':'☆'}</Text></Pressable></View>
       <Bar value={(session.index+1)/n*100} color={GRADE_INFO[session.grade].color}/>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.quizContent}>
+      <ScrollView ref={quizScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={S.quizContent}
+        onContentSizeChange={()=>{if(showExplanation)quizScrollRef.current?.scrollToEnd({animated:true});}}>
         <Animated.View style={{opacity:fade,transform:[{translateY:fade.interpolate({inputRange:[0,1],outputRange:[14,0]})}]}}>
           <View style={S.row}><GradeBadge grade={session.grade}/><Text style={S.questionCategory}>{activeQuestion.category}</Text></View>
           <Text style={S.questionPrompt}>{activeQuestion.prompt}</Text>
@@ -309,8 +314,10 @@ export default function AppRoot() {
                 {correct?<Text style={{color:C.green,fontSize:17}}>✓</Text>:null}
               </Pressable>;
             })}
-            {answerHandled&&!isMini?<Card style={S.explanationCard}><Text style={[S.explanationHeadline,{color:selected===activeQuestion.answer?C.green:C.red}]}>{selected===activeQuestion.answer?'正解です！':'もう一度、理解を深めましょう'}</Text>
-              <Text style={S.explanationAnswer}>正解：{activeQuestion.answer+1}. {activeQuestion.options[activeQuestion.answer]}</Text><Text style={S.explanationText}>{activeQuestion.explanation}</Text></Card>:null}
+            {answerHandled&&!isMini&&showExplanation?<Card style={S.explanationCard}>
+              <Text style={S.explanationAnswer}>正解：{activeQuestion.answer+1}. {activeQuestion.options[activeQuestion.answer]}</Text>
+              <Text style={S.explanationText}>{activeQuestion.explanation}</Text>
+            </Card>:null}
           </>:<>
             <Text style={S.writtenHint}>記述問題 · 自己採点（自動採点ではありません）。解答例は採点前に表示されます。</Text>
             <TextInput value={writing} onChangeText={setWriting} multiline editable={!answerHandled} placeholder="ここに自分の解答を入力..." placeholderTextColor="#A1A99F" style={S.writingInput} textAlignVertical="top"/>
@@ -320,7 +327,19 @@ export default function AppRoot() {
           </>}
         </Animated.View>
       </ScrollView>
-      <View style={S.quizFooter}><Text style={S.quizModeLabel}>{isMini?'模擬練習（時間制限なし）・選択問題の解説は終了後':'一問一答 ・ 学習モード'}</Text><BigButton title={session.index+1===n?'結果を見る':'次の問題へ  →'} disabled={!answerHandled} onPress={next}/></View>
+      <View style={S.quizFooter}>
+        {answerHandled && activeQuestion.kind==='choice' && !isMini?<View style={S.quizFeedback}>
+          <Text style={[S.quizFeedbackText,{color:selected===activeQuestion.answer?C.green:C.red}]} accessibilityRole="text">
+            {selected===activeQuestion.answer?'✓ 正解':'✕ 不正解 · 正解は '+(activeQuestion.answer+1)+'番'}
+          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={showExplanation?'解説を閉じる':'解説を見る'}
+            accessibilityState={{expanded:showExplanation}} onPress={()=>setShowExplanation(v=>!v)} style={S.explanationToggle}>
+            <Text style={S.explanationToggleText}>{showExplanation?'解説を閉じる ▲':'解説を見る ▼'}</Text>
+          </Pressable>
+        </View>:null}
+        {isMini?<Text style={S.quizModeLabel}>模擬練習 · 解説は終了後に確認できます</Text>:null}
+        <BigButton title={session.index+1===n?'結果を見る':'次の問題へ  →'} disabled={!answerHandled} onPress={next}/>
+      </View>
     </SafeAreaView>;
   }
 
@@ -403,7 +422,7 @@ export default function AppRoot() {
         <SectionTitle title="公式情報・問題集"/>
         <Card>{OFFICIAL_LINKS.map((item,i)=><Pressable key={item.url} onPress={()=>openOfficial(item.url)} style={[S.linkRow,i>0&&{borderTopWidth:1,borderColor:C.line}]}><Text style={S.linkTitle}>{item.label}</Text><Text style={S.linkArrow}>↗</Text></Pressable>)}</Card>
         <SectionTitle title="このアプリについて"/>
-        <Card><Text style={S.cardTitle}>食のまなびノート v1.0.44（試作版）</Text><Text style={S.paragraph}>FLAネットワーク協会と関係のない非公式の学習アプリです。収録した問題・解説は当試作版用に独自作成したもので、公式過去問を転載したものではありません。</Text><Text style={S.paragraph}>2026年に刷新された3級・2級と、新設1級の試験範囲を参考にしています。制度や食品表示等の最新情報は必ず公式資料でご確認ください。現在の問題は公開前の監修・校正段階です。</Text><Text style={S.paragraph}>学習記録は端末内に保存します。アカウント登録やクラウド同期、AIへのデータ送信は実装していません。</Text></Card>
+        <Card><Text style={S.cardTitle}>食のまなびノート v1.0.45（試作版）</Text><Text style={S.paragraph}>FLAネットワーク協会と関係のない非公式の学習アプリです。収録した問題・解説は当試作版用に独自作成したもので、公式過去問を転載したものではありません。</Text><Text style={S.paragraph}>2026年に刷新された3級・2級と、新設1級の試験範囲を参考にしています。制度や食品表示等の最新情報は必ず公式資料でご確認ください。現在の問題は公開前の監修・校正段階です。</Text><Text style={S.paragraph}>学習記録は端末内に保存します。アカウント登録やクラウド同期、AIへのデータ送信は実装していません。</Text></Card>
         <SectionTitle title="データ管理"/><BigButton title="学習記録をJSONでバックアップ（Web版）" secondary onPress={()=>{void exportBackup();}}/><Text style={[S.small,{marginTop:9,marginBottom:14}]}>学習履歴と中断中の問題を端末から読み取り、JSONファイルとして保存します。復元する場合は設定画面から操作してください。個人の学習記録が含まれるため共有しないでください。</Text><BigButton title="バックアップJSONを確認（復元なし・Web版）" secondary onPress={inspectBackupOnWeb}/><Text style={[S.small,{marginTop:9,marginBottom:14}]}>ファイルの形式と件数のみ確認します。データの復元や上書きは行いません。</Text><BigButton title="バックアップJSONから復元（上書き・Web版）" secondary onPress={restoreBackupOnWeb}/><Text style={[S.small,{marginTop:9,marginBottom:14}]}>現在の学習記録を先にバックアップしてください。復元すると現在の記録は上書きされ、ページが再読み込みされます。</Text><BigButton title="学習記録をすべて削除" secondary onPress={reset}/><Text style={[S.small,{marginTop:9}]}>削除後は復元できません。アプリのアンインストール時にも記録が失われる場合があります。</Text>
       </>:null}
     </ScrollView>
@@ -446,13 +465,18 @@ const S=StyleSheet.create({
   linkRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:14},linkTitle:{fontSize:13,fontWeight:'700',color:C.ink,flex:1},linkArrow:{fontSize:19,color:C.orange,fontWeight:'900'},
   paragraph:{fontSize:12,color:C.muted,lineHeight:21,marginTop:14},
   warning:{backgroundColor:C.redSoft,padding:12,margin:14,borderRadius:10},warningText:{color:C.red,fontSize:12},
-  quizTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:22,paddingVertical:15},x:{fontSize:30,color:C.muted},star:{fontSize:28,color:C.orange},
-  quizContent:{paddingHorizontal:22,paddingTop:30,paddingBottom:42},questionCategory:{fontSize:12,color:C.muted,fontWeight:'700',flexShrink:1},
-  questionPrompt:{fontSize:21,fontWeight:'900',lineHeight:34,color:C.ink,marginTop:24,marginBottom:27},
-  option:{flexDirection:'row',alignItems:'center',backgroundColor:C.paper,paddingVertical:15,paddingHorizontal:13,borderRadius:15,borderWidth:1.5,borderColor:C.line,marginBottom:11,gap:12,minHeight:60},
-  optionLetter:{height:30,width:30,borderRadius:10,backgroundColor:C.soft,alignItems:'center',justifyContent:'center'},optionLetterText:{fontWeight:'900',color:C.muted},optionText:{flex:1,color:C.ink,fontSize:14,lineHeight:21,fontWeight:'600'},
-  explanationCard:{marginTop:13,backgroundColor:'#FBFEFA'},explanationHeadline:{fontSize:17,color:C.green,fontWeight:'900',marginBottom:9},explanationAnswer:{fontSize:13,color:C.ink,fontWeight:'800',lineHeight:20,marginBottom:7},explanationText:{fontSize:13,color:C.ink,lineHeight:22},
-  quizFooter:{paddingHorizontal:20,paddingBottom:14,paddingTop:10,borderTopColor:C.line,borderTopWidth:1,backgroundColor:C.paper},quizModeLabel:{fontSize:11,color:C.muted,textAlign:'center',marginBottom:9},
+  quizTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:18,paddingVertical:9},x:{fontSize:30,color:C.muted},star:{fontSize:28,color:C.orange},
+  quizContent:{paddingHorizontal:16,paddingTop:12,paddingBottom:22},questionCategory:{fontSize:12,color:C.muted,fontWeight:'700',flexShrink:1},
+  questionPrompt:{fontSize:19,fontWeight:'900',lineHeight:29,color:C.ink,marginTop:13,marginBottom:15},
+  // Compact while keeping >=48pt tap targets; longer Japanese options can still wrap.
+  option:{flexDirection:'row',alignItems:'center',backgroundColor:C.paper,paddingVertical:9,paddingHorizontal:11,borderRadius:12,borderWidth:1.5,borderColor:C.line,marginBottom:7,gap:10,minHeight:48},
+  optionLetter:{height:26,width:26,borderRadius:8,backgroundColor:C.soft,alignItems:'center',justifyContent:'center'},optionLetterText:{fontWeight:'900',color:C.muted},optionText:{flex:1,color:C.ink,fontSize:13,lineHeight:19,fontWeight:'600'},
+  explanationCard:{marginTop:8,padding:14,backgroundColor:'#FBFEFA'},explanationHeadline:{fontSize:17,color:C.green,fontWeight:'900',marginBottom:9},explanationAnswer:{fontSize:13,color:C.ink,fontWeight:'800',lineHeight:20,marginBottom:7},explanationText:{fontSize:13,color:C.ink,lineHeight:22},
+  quizFooter:{paddingHorizontal:16,paddingBottom:10,paddingTop:8,borderTopColor:C.line,borderTopWidth:1,backgroundColor:C.paper},quizModeLabel:{fontSize:11,color:C.muted,textAlign:'center',marginBottom:8},
+  quizFeedback:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:8,minHeight:36},
+  quizFeedbackText:{fontWeight:'900',fontSize:14,flexShrink:1},
+  explanationToggle:{minHeight:36,justifyContent:'center',paddingHorizontal:10,borderRadius:9,backgroundColor:C.greenSoft},
+  explanationToggleText:{fontSize:12,fontWeight:'800',color:C.green},
   writtenHint:{fontSize:12,color:C.purple,marginBottom:14,fontWeight:'700'},writingInput:{minHeight:160,backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:15,padding:15,fontSize:15,lineHeight:23,color:C.ink,marginBottom:16},
   selfButton:{flex:1,paddingVertical:12,alignItems:'center',borderRadius:13},link:{fontWeight:'800',fontSize:12},
 });

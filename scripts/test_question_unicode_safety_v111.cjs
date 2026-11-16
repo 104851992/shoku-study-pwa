@@ -27,5 +27,5 @@ for (const q of [
 ]) { assert.throws(() => check(q)); selfChecks++; }
 check({id:'fixture',kind:'choice',prompt:'食生活',options:['ご飯','パン','麺']}); selfChecks++;
 for (const q of bank) check(q);
-assert.equal(bank.length,506,'unexpected question count; review baseline before updating guard');
+assert.equal(bank.length,739,'unexpected question count; review baseline before updating guard');
 console.log(`Question Unicode safety: ${selfChecks} self-checks and ${bank.length} questions passed`);

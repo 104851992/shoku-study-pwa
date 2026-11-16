@@ -1,0 +1,34 @@
+name: Shoku Study quality gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies without modifying Expo version
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Validate question bank and 61+ regression suites
+        run: node scripts/verify_release_v126.cjs
+      - name: TypeScript
+        run: npm run check:types
+      - name: Export web PWA
+        run: npm run build:web
+      - name: Verify built PWA shell
+        run: |
+          test -f dist/index.html
+          test -f dist/sw.js
+          test -f dist/manifest.webmanifest

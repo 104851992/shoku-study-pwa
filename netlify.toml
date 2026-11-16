@@ -1,0 +1,15 @@
+# Existing GitHub-linked Netlify site: push main -> build -> deploy dist.
+# Do not set Clear-Site-Data: app learning progress belongs to the browser.
+[build]
+  publish = "dist"
+  command = "node scripts/verify_release_v126.cjs && npm run check:types && npm run build:web"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Only the Service Worker script should be revalidated frequently.
+# Do not force no-cache on HTML/manifest: the offline shell checks reject it.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
