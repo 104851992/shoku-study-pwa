@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "食のまなびノート",
+    "slug": "shoku-manabi-note",
+    "scheme": "shokumanabi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.shokumanabi",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.example.shokumanabi"
+    },
+    "plugins": [],
+    "web": {
+      "name": "食のまなびノート",
+      "shortName": "食のまなび",
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "themeColor": "#25704A",
+      "backgroundColor": "#FAF8F4"
+    }
+  }
+}

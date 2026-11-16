@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync('public/sw.js','utf8');
+const names=['shoku-manabi-offline-v18','shoku-manabi-offline-v17','shoku-manabi-offline-v19','shoku-manabi-offline-v23'];
+const deleted=[];const handlers={};
+const stores=Object.fromEntries(names.map(n=>[n,{'/':{source:n}}]));
+const caches={keys:async()=>names.filter(n=>stores[n]),open:async name=>({match:async key=>stores[name]?.[key],put:async()=>{},keys:async()=>[]}),delete:async key=>{deleted.push(key);delete stores[key];return true}};
+const self={location:{origin:'https://example.com'},clients:{claim:async()=>{}},addEventListener:(k,f)=>handlers[k]=f};
+vm.runInNewContext(source,{self,caches,URL,Promise,Request:class {},fetch:async()=>{throw Error('offline')}});
+(async()=>{let pending;handlers.activate({waitUntil:p=>pending=p});await pending;
+ assert.deepEqual(deleted,['shoku-manabi-offline-v18','shoku-manabi-offline-v17']);
+ assert(stores['shoku-manabi-offline-v19']);
+ assert(stores['shoku-manabi-offline-v23']);
+ delete stores['shoku-manabi-offline-v23']['/'];
+ let result;handlers.fetch({request:{method:'GET',url:'https://example.com/',mode:'navigate',headers:{has:()=>false},cache:'default'},respondWith:p=>result=p});
+ assert.equal((await result).source,'shoku-manabi-offline-v19');
+ console.log('PASS numeric ordering, newest prior retained, future cache untouched, offline fallback');
+})().catch(e=>{console.error(e);process.exitCode=1});

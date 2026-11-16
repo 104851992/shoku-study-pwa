@@ -1,0 +1,14 @@
+// Regression: backup validator and saved-session loader must agree on draft payloads.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ts=(()=>{try{return require('typescript')}catch{const {execFileSync}=require('node:child_process');return require(path.join(execFileSync('npm',['root','-g'],{encoding:'utf8'}).trim(),'typescript'))}})();
+const root=path.resolve(__dirname,'..');
+function load(rel,mocks){const js=ts.transpileModule(fs.readFileSync(path.join(root,rel),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;const m={exports:{}};vm.runInNewContext('(function(require,module,exports){'+js+'\n})',{Date,Map,Set,Number,JSON,Object,Array,String,RegExp,Error,Promise,console})(id=>{if(!(id in mocks))throw Error('unexpected import '+id);return mocks[id]},m,m.exports);return m.exports}
+const questions=load('src/data/questions.ts',{}).questions;
+const q=questions.find(q=>q.kind==='choice');assert(q);
+let raw;const storage={getItem:async()=>raw};
+const progress=load('src/lib/progress.ts',{'@react-native-async-storage/async-storage':{default:storage},'../data/questions':{questions}});
+const backup=load('src/lib/backup.ts',{'@react-native-async-storage/async-storage':{default:storage},'../data/questions':{questions}});
+const base={ids:[q.id],index:0,grade:q.grade,mode:'practice',correct:0,answered:0,began:1700000000000,responses:[]};
+const answered={...base,index:0,correct:1,answered:1,responses:[{id:q.id,selected:q.answer,correct:true}]};
+const cases=[['fresh',base],['answered',answered],['bad grade',{...base,grade:0}],['unknown id',{...base,ids:['missing-id']}],['duplicate ids',{...base,ids:[q.id,q.id]}],['negative index',{...base,index:-1}],['invalid timestamp',{...base,began:0}],['counter mismatch',{...base,answered:1}],['wrong correctness',{...answered,responses:[{id:q.id,selected:q.answer,correct:false}]}],['wrong response order',{...base,ids:[q.id,questions.find(x=>x.id!==q.id&&x.grade===q.grade).id],answered:1,index:1,responses:[{id:questions.find(x=>x.id!==q.id&&x.grade===q.grade).id,selected:0,correct:false}]}],['duplicate response',{...answered,ids:[q.id,questions.find(x=>x.id!==q.id&&x.grade===q.grade).id],answered:2,index:1,responses:[{id:q.id,selected:q.answer,correct:true},{id:q.id,selected:q.answer,correct:true}],correct:2}]];
+(async()=>{for(const [name,d] of cases){raw=JSON.stringify(d);const accepted=backup.validateBackupEnvelope({format:'shoku-study-backup',version:1,exportedAt:'2026-11-15T00:00:00.000Z',progressRaw:null,draftRaw:raw});let loaded=true;try{await progress.loadDraft()}catch{loaded=false}assert.equal(accepted,loaded,'draft validator mismatch: '+name);console.log('PASS '+name)}console.log('Backup/draft validator consistency: '+cases.length+'/'+cases.length+' passed')})().catch(e=>{console.error(e);process.exitCode=1});
